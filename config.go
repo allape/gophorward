@@ -9,16 +9,10 @@ import (
 	"time"
 )
 
-type String string
-
-func (s String) SpaceTrimmed() String {
-	return String(strings.TrimSpace(string(s)))
-}
-
 type (
-	RouteName String
-	Hostname  String
-	URIPrefix String
+	RouteName string
+	Hostname  string
+	URIPrefix string
 )
 
 type RouteConfig struct {
