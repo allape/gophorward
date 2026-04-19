@@ -9,13 +9,20 @@ import (
 	"time"
 )
 
+type String string
+
+func (s String) SpaceTrimmed() String {
+	return String(strings.TrimSpace(string(s)))
+}
+
 type (
-	Hostname  string
-	URIPrefix string
+	RouteName String
+	Hostname  String
+	URIPrefix String
 )
 
 type RouteConfig struct {
-	Name                 string    `json:"name"`                 // unique name
+	Name                 RouteName `json:"name"`                 // unique name
 	Priority             uint64    `json:"priority"`             // bigger for higher priority
 	Hostname             Hostname  `json:"hostname"`             // hostname for capture, full text comparison, should not contain any slash(/)
 	URIPrefix            URIPrefix `json:"uriPrefix"`            // secondary match after hostname, only match prefix, use Priority to control the access order
@@ -41,7 +48,7 @@ func (c *RouteConfig) GetClientIdentity(request *http.Request) AccessCounterKey 
 	if len(seg) > 1 {
 		seg = seg[0 : len(seg)-1]
 	}
-	return AccessCounterKey(strings.Join(seg, ":") + ">" + c.Name)
+	return AccessCounterKey(strings.Join(seg, ":") + ">" + string(c.Name))
 }
 
 type (
@@ -52,7 +59,7 @@ type (
 
 type AuthorizedToken struct {
 	Token         Token       `json:"token"`
-	AllowedRoutes []string    `json:"allowedRoutes"` // RouteConfig.Name
+	AllowedRoutes []RouteName `json:"allowedRoutes"` // RouteConfig.Name
 	AppendHeaders http.Header `json:"appendHeaders"` // not used for now
 	ExpireAt      time.Time   `json:"expireAt"`
 

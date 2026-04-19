@@ -84,9 +84,9 @@ type Gophorward struct {
 	// BeforeForward
 	// DO NOT DO A BLOCKING IN THIS FUNC
 	BeforeForward func(
-		userId, // This will be 0 if a route is public accessible
-		routeName, // Name of current route
-		originalURI, // URI before trim (if set to be trimmed)
+		userId UserID, // This will be 0 if a route is public accessible
+		routeName RouteName, // Name of current route
+		originalURI string, // URI before trim (if set to be trimmed)
 		forwardTo string, //
 		consoleMessage string, // The message which logged to the std console
 		request *http.Request,
@@ -439,7 +439,7 @@ func (f *Gophorward) Serve() error {
 				return
 			}
 
-			userId := "0"
+			userId := UserID("0")
 
 			if routeConfig.AllowPublicAccess {
 				request.Header.Del(HeaderUserID)
@@ -472,8 +472,8 @@ func (f *Gophorward) Serve() error {
 					return
 				}
 
-				userId = string(session.UserID)
-				request.Header.Set(HeaderUserID, userId)
+				userId = session.UserID
+				request.Header.Set(HeaderUserID, string(userId))
 				request.Header.Set(HeaderUserName, string(session.UserName))
 
 				if session.AppendHeaders != nil {
