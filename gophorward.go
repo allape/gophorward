@@ -543,7 +543,18 @@ func (f *Gophorward) Serve() error {
 				request.Host = routeConfig.ForwardTo.Hostname()
 			}
 
+			if routeConfig.EnableCompression && strings.Contains(request.Header.Get("accept-encoding"), "gzip") {
+				writer = NewGzipHttpResponseWriter(writer)
+			}
+
 			proxy.ServeHTTP(writer, request)
+
+			if w, ok := writer.(*GzipHttpResponseWriter); ok {
+				err := w.Close()
+				if err != nil {
+					l.Error().Printf("failed to close gzip writer: %s", err)
+				}
+			}
 		})
 	}
 
@@ -619,8 +630,6 @@ func (f *Gophorward) Serve() error {
 	return err
 }
 
-// NewGophorward
-// TODO test
 func NewGophorward(httpAddr, httpsAddr string, configs []RouteConfig, tokens []AuthorizedToken) (*Gophorward, error) {
 	httpAddr = strings.TrimSpace(httpAddr)
 	httpsAddr = strings.TrimSpace(httpsAddr)

@@ -24,6 +24,7 @@ type RouteConfig struct {
 	StripURIPrefix       bool      `json:"stripURIPrefix"`       // remove URIPrefix from RequestURI before append it to ForwardTo
 	AccessLimitPerMinute uint64    `json:"accessLimitPerMinute"` // 0 to allow unlimited access
 	SetHost              bool      `json:"setHost"`              // set request.Host of http.HandlerFunc to the hostname of ForwardTo
+	EnableCompression    bool      `json:"enableCompression"`    // always be gzip if client requested
 
 	ForwardTo              *url.URL // must start with `http://` or `https://`
 	Certificate            *tls.Certificate
