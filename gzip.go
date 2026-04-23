@@ -96,6 +96,9 @@ func (g *GzipHttpResponseWriter) WriteHeader(statusCode int) {
 }
 
 func (g *GzipHttpResponseWriter) Close() error {
+	if g.alreadyCompressed {
+		return nil
+	}
 	return g.gzipWriter.Close()
 }
 
