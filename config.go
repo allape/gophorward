@@ -26,14 +26,17 @@ type RouteConfig struct {
 	SetHost              bool      `json:"setHost"`              // set request.Host of http.HandlerFunc to the hostname of ForwardTo
 	EnableCompression    bool      `json:"enableCompression"`    // always be gzip if client requested
 
-	ForwardTo              *url.URL // must start with `http://` or `https://`
-	Certificate            *tls.Certificate
-	ForwardTrustedCertPool *x509.CertPool
+	// Certificate for this route
+	// when this exists, will be redirected to https when client uses http
+	Certificate *tls.Certificate
+
+	ForwardTo       *url.URL       // scheme must be `http://` or `https://`
+	TrustedCertPool *x509.CertPool // the CA cert for ForwardTo
 
 	UpHeaders   http.Header // headers responses to client, put cors headers here if needed
 	DownHeaders http.Header // headers sends to downstream, put extra auth headers here if needed
 
-	forwardToString string
+	forwardToString string // for logging usage
 }
 
 // GetClientIdentity

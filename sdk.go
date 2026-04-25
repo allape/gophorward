@@ -1,47 +1,37 @@
 package gophorward
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	ContextGrantedKey = "x-goor-granted"
-	ContextUserKey    = "x-goor-user"
+	ContextUserKey = "x-goor-user"
 )
 
 type SimpleUser struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID   UserID   `json:"id"`
+	Name UserName `json:"name"`
 }
 
 func GinMiddlewareHandler(noUserHandler ...gin.HandlerFunc) gin.HandlerFunc {
 	return func(context *gin.Context) {
-		id := strings.TrimSpace(context.Request.Header.Get(HeaderUserID))
+		user, ok := HttpGetUser(context.Request)
 
-		if len(id) == 0 {
+		if !ok {
 			for _, handlerFunc := range noUserHandler {
 				handlerFunc(context)
 			}
-			context.Set(ContextGrantedKey, false)
 			return
 		}
 
-		name := strings.TrimSpace(context.Request.Header.Get(HeaderUserName))
-
-		user := &SimpleUser{id, name}
-		context.Set(ContextGrantedKey, true)
 		context.Set(ContextUserKey, user)
 	}
 }
 
 func GinGetUser(context *gin.Context) (*SimpleUser, bool) {
-	granted := context.GetBool(ContextGrantedKey)
-	if !granted {
-		return nil, false
-	}
-
 	user, ok := context.Get(ContextUserKey)
 	if !ok {
 		return nil, false
@@ -53,4 +43,21 @@ func GinGetUser(context *gin.Context) (*SimpleUser, bool) {
 	}
 
 	return parsedUser, true
+}
+
+func HttpGetUser(request *http.Request) (*SimpleUser, bool) {
+	return HttpHeaderGetUser(request.Header)
+}
+
+func HttpHeaderGetUser(header http.Header) (*SimpleUser, bool) {
+	id := strings.TrimSpace(header.Get(HeaderUserID))
+
+	if id == "" {
+		return nil, false
+	}
+
+	return &SimpleUser{
+		ID:   UserID(id),
+		Name: UserName(header.Get(HeaderUserName)),
+	}, true
 }

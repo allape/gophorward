@@ -347,9 +347,9 @@ func (f *Gophorward) Serve() error {
 		uriPrefix := config.URIPrefix
 
 		proxy := httputil.NewSingleHostReverseProxy(config.ForwardTo)
-		if config.ForwardTrustedCertPool != nil {
+		if config.TrustedCertPool != nil {
 			t := http.DefaultTransport.(*http.Transport).Clone()
-			t.TLSClientConfig.RootCAs = config.ForwardTrustedCertPool
+			t.TLSClientConfig.RootCAs = config.TrustedCertPool
 			proxy.Transport = t
 		}
 

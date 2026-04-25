@@ -13,7 +13,7 @@ import (
 )
 
 func localhostConfig() (*RouteConfig, error) {
-	u, err := url.Parse("http://127.0.0.1:5050") // dufs .
+	u, err := url.Parse("http://127.0.0.1:5050") // dufs --port 5050 .
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse localhost config: %s", err)
 	}
