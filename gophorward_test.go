@@ -2,6 +2,7 @@ package gophorward
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net/url"
@@ -12,41 +13,28 @@ import (
 	"time"
 )
 
-func localhostConfig() (*RouteConfig, error) {
-	u, err := url.Parse("http://127.0.0.1:5050") // dufs --port 5050 .
+func TestNewGophorward(t *testing.T) {
+	dufs, err := dufsConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse localhost config: %s", err)
+		t.Fatalf("failed to load localhost config: %s", err)
+		return
 	}
 
-	return &RouteConfig{
-		Name:                 "localhost",
-		Priority:             100,
-		Hostname:             "localhost",
-		URIPrefix:            "",
-		AllowPublicAccess:    true,
-		StripURIPrefix:       false,
-		AccessLimitPerMinute: 60,
-		SetHost:              false,
-		EnableCompression:    true,
-
-		ForwardTo: u,
-	}, nil
-}
-
-func TestNewGophorward(t *testing.T) {
-	config1, err := localhostConfig()
+	mqtt, err := mqttConfig()
 	if err != nil {
 		t.Fatalf("failed to load localhost config: %s", err)
 		return
 	}
 
 	server, err := NewGophorward(":80", ":443", []RouteConfig{
-		*config1,
+		*dufs,
+		*mqtt,
 	}, []AuthorizedToken{
 		{
 			Token: "1234567890",
 			AllowedRoutes: []RouteName{
-				"localhost",
+				"dufs.localhost",
+				"mqtt.localhost",
 			},
 			ExpireAt: time.Now().Add(time.Hour * 999_999),
 
@@ -75,4 +63,130 @@ func TestNewGophorward(t *testing.T) {
 		t.Fatalf("failed to shutdown server: %s", err)
 		return
 	}
+}
+
+// testCert
+// *.testlan.allape.cc signed by local cert management
+//
+// sudo echo "127.0.0.1 dufs.testlan.allape.cc" >> /etc/hosts
+// sudo echo "127.0.0.1 mqtt.testlan.allape.cc" >> /etc/hosts
+func testCert() (*tls.Certificate, bool, error) {
+	cert := "cert/_.testlan.allape.cc.crt"
+	pkey := "cert/_.testlan.allape.cc.key"
+
+	stat, err := os.Stat(cert)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not stat certificate: %w", err)
+	} else if stat.IsDir() {
+		return nil, false, fmt.Errorf("cert %s is a directory", cert)
+	}
+
+	stat, err = os.Stat(pkey)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not stat private key: %w", err)
+	} else if stat.IsDir() {
+		return nil, false, fmt.Errorf("pkey %s is a directory", pkey)
+	}
+
+	certPEM, err := os.ReadFile(cert)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not read certificate: %w", err)
+	}
+	keyPEM, err := os.ReadFile(pkey)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not read private key: %w", err)
+	}
+
+	c, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not parse certificate: %w", err)
+	}
+
+	return &c, true, nil
+}
+
+func dufsConfig() (*RouteConfig, error) {
+	/*
+		dufs --port 5050 .
+	*/
+	u, err := url.Parse("http://127.0.0.1:5050")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse dufs config: %s", err)
+	}
+
+	r := &RouteConfig{
+		Name:                 "dufs.testlan.allape.cc",
+		Priority:             100,
+		Hostname:             "dufs.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    true,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    true,
+
+		ForwardTo: u,
+	}
+
+	cert, ok, err := testCert()
+	if err != nil {
+		log.Printf("failed to load test certificate: %s", err)
+	} else if !ok {
+		log.Printf("no test certificate loaded")
+	} else {
+		r.Certificate = cert
+	}
+
+	return r, nil
+}
+
+func mqttConfig() (*RouteConfig, error) {
+	/*
+		echo "listener 1883" > mosquitto.conf
+		echo "" >> mosquitto.conf
+		echo "allow_anonymous true" >> mosquitto.conf
+		echo "listener 1888" >> mosquitto.conf
+		echo "protocol websockets" >> mosquitto.conf
+		echo "allow_anonymous true" >> mosquitto.conf
+		echo "connection_messages true" >> mosquitto.conf
+		echo "" >> mosquitto.conf
+
+		docker run \
+		  -v "$(pwd)/mosquitto.conf":"/mosquitto/config/mosquitto.conf" \
+		  -d \
+		  -p 1888:1888 \
+		  --name mqtt \
+		  --restart=unless-stopped \
+		  eclipse-mosquitto
+	*/
+
+	u, err := url.Parse("http://127.0.0.1:1888")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse mqtt config: %s", err)
+	}
+
+	r := &RouteConfig{
+		Name:                 "mqtt.testlan.allape.cc",
+		Priority:             100,
+		Hostname:             "mqtt.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    true,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    true,
+
+		ForwardTo: u,
+	}
+
+	cert, ok, err := testCert()
+	if err != nil {
+		log.Printf("failed to load test certificate: %s", err)
+	} else if !ok {
+		log.Printf("no test certificate loaded")
+	} else {
+		r.Certificate = cert
+	}
+
+	return r, nil
 }

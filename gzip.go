@@ -1,8 +1,11 @@
 package gophorward
 
 import (
+	"bufio"
 	"compress/gzip"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 )
@@ -63,11 +66,13 @@ var CommonTextBasedContentTypePrefixes = ContentTypePrefixes{
 type GzipHttpResponseWriter struct {
 	io.Closer
 	http.ResponseWriter
+	http.Hijacker
 
 	responseWriter http.ResponseWriter
 	gzipWriter     *gzip.Writer
 
 	alreadyCompressed bool
+	hijacked          bool
 }
 
 func (g *GzipHttpResponseWriter) Header() http.Header {
@@ -95,8 +100,18 @@ func (g *GzipHttpResponseWriter) WriteHeader(statusCode int) {
 	g.responseWriter.WriteHeader(statusCode)
 }
 
+func (g *GzipHttpResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	r, ok := g.responseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("non-Hijacker ResponseWriter of GzipHttpResponseWriter")
+	}
+
+	g.hijacked = true
+	return r.Hijack()
+}
+
 func (g *GzipHttpResponseWriter) Close() error {
-	if g.alreadyCompressed {
+	if g.alreadyCompressed || g.hijacked {
 		return nil
 	}
 	return g.gzipWriter.Close()
