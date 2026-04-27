@@ -44,6 +44,8 @@ func MakeResponse(writer http.ResponseWriter, request *http.Request, statusCode 
 	}
 }
 
+// CanRedirect2Https
+// Credit: https://github.com/caddyserver/caddy d2c46d0b0bc4ec2c8529a3ad24015838356dd888 modules/caddyhttp/httpredirectlistener.go:163
 func CanRedirect2Https(request *http.Request) bool {
 	switch request.Method {
 	case "HEAD", "GET", "POST", "PUT", "OPTIONS":

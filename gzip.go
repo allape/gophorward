@@ -22,6 +22,7 @@ func (t ContentTypePrefixes) Match(contentType string) bool {
 }
 
 // CommonTextBasedContentTypePrefixes
+// Credit: https://github.com/caddyserver/caddy d2c46d0b0bc4ec2c8529a3ad24015838356dd888 modules/caddyhttp/encode/encode.go:85
 // common text-based content types
 // list based on https://developers.cloudflare.com/speed/optimization/content/brotli/content-compression/#compression-between-cloudflare-and-website-visitors
 var CommonTextBasedContentTypePrefixes = ContentTypePrefixes{
