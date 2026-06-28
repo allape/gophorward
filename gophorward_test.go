@@ -13,62 +13,41 @@ import (
 	"time"
 )
 
-func TestNewGophorward(t *testing.T) {
-	dufs, err := dufsConfig()
+// testCert
+// *.testlan.allape.cc signed by local cert management
+func testCert() (*tls.Certificate, bool, error) {
+	cert := "cert/_.testlan.allape.cc.crt"
+	pkey := "cert/_.testlan.allape.cc.key"
+
+	stat, err := os.Stat(cert)
 	if err != nil {
-		t.Fatalf("failed to load dufs config: %s", err)
-		return
+		return nil, false, fmt.Errorf("could not stat certificate: %w", err)
+	} else if stat.IsDir() {
+		return nil, false, fmt.Errorf("cert %s is a directory", cert)
 	}
 
-	mqtt, err := mqttConfig()
+	stat, err = os.Stat(pkey)
 	if err != nil {
-		t.Fatalf("failed to load mqtt config: %s", err)
-		return
+		return nil, false, fmt.Errorf("could not stat private key: %w", err)
+	} else if stat.IsDir() {
+		return nil, false, fmt.Errorf("pkey %s is a directory", pkey)
 	}
 
-	dockerRegistry, err := dockerRegistryConfig()
+	certPEM, err := os.ReadFile(cert)
 	if err != nil {
-		t.Fatalf("failed to load docker registry config: %s", err)
-		return
+		return nil, false, fmt.Errorf("could not read certificate: %w", err)
+	}
+	keyPEM, err := os.ReadFile(pkey)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not read private key: %w", err)
 	}
 
-	server, err := NewGophorward(":80", ":443", []RouteConfig{
-		*dufs,
-		*mqtt,
-		*dockerRegistry,
-	}, []AuthorizedToken{
-		{
-			Token: "1234567890",
-			AllowedRoutes: []RouteName{
-				"dufs",
-			},
-			ExpireAt: time.Now().Add(time.Hour * 999_999),
-
-			UserID:   "1",
-			UserName: "John Doe",
-		},
-	})
+	c, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
-		t.Fatalf("failed to create server: %s", err)
-		return
+		return nil, false, fmt.Errorf("could not parse certificate: %w", err)
 	}
 
-	go func() {
-		err = server.Serve()
-		if err != nil {
-			log.Printf("failed to start server: %s", err)
-		}
-	}()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	<-sigs
-
-	err = server.Shutdown(context.Background())
-	if err != nil {
-		t.Fatalf("failed to shutdown server: %s", err)
-		return
-	}
+	return &c, true, nil
 }
 
 // dufsConfig
@@ -86,7 +65,7 @@ func dufsConfig() (*RouteConfig, error) {
 	*/
 	u, err := url.Parse("http://127.0.0.1:5050")
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse dufs config: %s", err)
+		return nil, fmt.Errorf("failed to parse dufs addr: %s", err)
 	}
 
 	r := &RouteConfig{
@@ -221,39 +200,109 @@ func dockerRegistryConfig() (*RouteConfig, error) {
 	return r, nil
 }
 
-// testCert
-// *.testlan.allape.cc signed by local cert management
-func testCert() (*tls.Certificate, bool, error) {
-	cert := "cert/_.testlan.allape.cc.crt"
-	pkey := "cert/_.testlan.allape.cc.key"
+// httpProxyConfig
+// Test for http proxy tunnel
+func httpProxyConfig() (*RouteConfig, error) {
+	/*
+		# privoxy config
+		listen-address 127.0.0.1:1080
+		forward        /         .
 
-	stat, err := os.Stat(cert)
+		# test
+		curl -v -x https://proxy.testlan.allape.cc https://duckduckgo.com
+	*/
+	u, err := url.Parse("http://127.0.0.1:1080")
 	if err != nil {
-		return nil, false, fmt.Errorf("could not stat certificate: %w", err)
-	} else if stat.IsDir() {
-		return nil, false, fmt.Errorf("cert %s is a directory", cert)
+		return nil, fmt.Errorf("failed to parse http proxy addr: %s", err)
 	}
 
-	stat, err = os.Stat(pkey)
-	if err != nil {
-		return nil, false, fmt.Errorf("could not stat private key: %w", err)
-	} else if stat.IsDir() {
-		return nil, false, fmt.Errorf("pkey %s is a directory", pkey)
+	r := &RouteConfig{
+		Name:                 "proxy",
+		Priority:             100,
+		Hostname:             "proxy.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    true,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    false,
+
+		ForwardTo: u,
 	}
 
-	certPEM, err := os.ReadFile(cert)
+	cert, ok, err := testCert()
 	if err != nil {
-		return nil, false, fmt.Errorf("could not read certificate: %w", err)
-	}
-	keyPEM, err := os.ReadFile(pkey)
-	if err != nil {
-		return nil, false, fmt.Errorf("could not read private key: %w", err)
-	}
-
-	c, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		return nil, false, fmt.Errorf("could not parse certificate: %w", err)
+		log.Printf("failed to load test certificate: %s", err)
+	} else if !ok {
+		log.Printf("no test certificate loaded")
+	} else {
+		r.Certificate = cert
 	}
 
-	return &c, true, nil
+	return r, nil
+}
+
+func TestNewGophorward(t *testing.T) {
+	dufs, err := dufsConfig()
+	if err != nil {
+		t.Fatalf("failed to load dufs config: %s", err)
+		return
+	}
+
+	mqtt, err := mqttConfig()
+	if err != nil {
+		t.Fatalf("failed to load mqtt config: %s", err)
+		return
+	}
+
+	dockerRegistry, err := dockerRegistryConfig()
+	if err != nil {
+		t.Fatalf("failed to load docker registry config: %s", err)
+		return
+	}
+
+	httpProxy, err := httpProxyConfig()
+	if err != nil {
+		t.Fatalf("failed to load http proxy config: %s", err)
+		return
+	}
+
+	server, err := NewGophorward(":80", ":443", []RouteConfig{
+		*dufs,
+		*mqtt,
+		*dockerRegistry,
+		*httpProxy,
+	}, []AuthorizedToken{
+		{
+			Token: "1234567890",
+			AllowedRoutes: []RouteName{
+				"dufs",
+			},
+			ExpireAt: time.Now().Add(time.Hour * 999_999),
+
+			UserID:   "1",
+			UserName: "John Doe",
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create server: %s", err)
+		return
+	}
+
+	go func() {
+		err = server.Serve()
+		if err != nil {
+			log.Printf("failed to start server: %s", err)
+		}
+	}()
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	<-sigs
+
+	err = server.Shutdown(context.Background())
+	if err != nil {
+		t.Fatalf("failed to shutdown server: %s", err)
+		return
+	}
 }

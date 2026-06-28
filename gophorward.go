@@ -35,6 +35,7 @@ var (
 	Error401 = errors.New("401 Unauthorized")
 	Error403 = errors.New("403 Forbidden")
 	Error404 = errors.New("404 Not Found")
+	Error405 = errors.New("405 Method Not Allowed")
 	Error500 = errors.New("500 Internal Server Error")
 	Error429 = errors.New("429 Too Many Requests")
 )
@@ -374,19 +375,33 @@ func (f *Gophorward) Serve() error {
 		}
 	}
 
-	newHandler := func(isHttps bool) http.Handler {
-		l := httpl
-		//goland:noinspection HttpUrlsUsage
-		protocolPrefix := "http://"
-		if isHttps {
-			l = httpsl
-			protocolPrefix = "https://"
-		}
-
+	newHandler := func() http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			l := httpsl
+			protocolPrefix := "https://"
+
+			isHttps := IsHttps(request)
+
+			if !isHttps {
+				l = httpl
+				//goland:noinspection HttpUrlsUsage
+				protocolPrefix = "http://"
+			}
+
 			hostname := Hostname(request.Host)
 
-			if /*!isHttps && */ !IsHttps(request) && CanRedirect2Https(request) {
+			// http proxy tunnel; TODO to be continued
+			if request.Method == http.MethodConnect {
+				//// we can NOT do auth for http, therefore panic here
+				//if !isHttps {
+				l.Info().Printf("[%s] -> CONNECT -> 405.notallowed", request.RemoteAddr)
+				f.MakeResponse(writer, request, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed), Error405)
+				return
+				//}
+				//hostname = Hostname(request.TLS.ServerName)
+			}
+
+			if !isHttps && CanRedirect2Https(request) {
 				if hasCertificate, ok := hostnameHasCertificate[hostname]; ok && hasCertificate {
 					http.Redirect(writer, request, "https://"+request.Host+request.URL.String(), http.StatusPermanentRedirect)
 					return
@@ -568,7 +583,7 @@ func (f *Gophorward) Serve() error {
 
 		f.httpServer = &http.Server{
 			Addr:    f.HttpAddr,
-			Handler: newHandler(false),
+			Handler: newHandler(),
 		}
 
 		go func() {
@@ -591,7 +606,7 @@ func (f *Gophorward) Serve() error {
 
 		f.httpsServer = &http.Server{
 			Addr:    f.HttpsAddr,
-			Handler: newHandler(true),
+			Handler: newHandler(),
 			TLSConfig: &tls.Config{
 				Certificates: certificates,
 			},
