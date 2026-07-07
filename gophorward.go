@@ -36,13 +36,14 @@ var (
 	Error403 = errors.New("403 Forbidden")
 	Error404 = errors.New("404 Not Found")
 	Error405 = errors.New("405 Method Not Allowed")
-	Error500 = errors.New("500 Internal Server Error")
 	Error429 = errors.New("429 Too Many Requests")
+	Error500 = errors.New("500 Internal Server Error")
 )
 
 type RequestConfig struct {
 	RouteConfig  *RouteConfig
 	ReverseProxy *httputil.ReverseProxy
+	TunnelProxy  *HttpConnectTunnelProxy
 }
 
 type (
@@ -84,14 +85,14 @@ type Gophorward struct {
 
 	// BeforeForward
 	// DO NOT DO A BLOCKING IN THIS FUNC
+	// Return an error to stop forwarding
 	BeforeForward func(
 		userId UserID, // This will be 0 if a route is public accessible
-		routeName RouteName, // Name of current route
-		originalURI string, // URI before trim (if set to be trimmed)
-		forwardTo string, //
+		routeConfig *RouteConfig,
 		consoleMessage string, // The message which logged to the std console
 		request *http.Request,
-	)
+		originalURI string, // URI before trim (if set to be trimmed)
+	) error
 }
 
 func (f *Gophorward) startCleaner(endChan <-chan struct{}) {
@@ -347,15 +348,19 @@ func (f *Gophorward) Serve() error {
 		hostname := config.Hostname
 		uriPrefix := config.URIPrefix
 
-		proxy := httputil.NewSingleHostReverseProxy(config.ForwardTo)
+		reverseProxy := httputil.NewSingleHostReverseProxy(config.ForwardTo)
+		tunnelProxy := NewHttpConnectTunnelProxy(config.ForwardTo)
+
 		if config.TrustedCertPool != nil {
 			t := http.DefaultTransport.(*http.Transport).Clone()
 			t.TLSClientConfig.RootCAs = config.TrustedCertPool
-			proxy.Transport = t
+			reverseProxy.Transport = t
+
+			tunnelProxy.CaCertPool = config.TrustedCertPool
 		}
 
 		if config.StripURIPrefix {
-			proxy.ModifyResponse = f.modifyResponseHandler(&config)
+			reverseProxy.ModifyResponse = f.modifyResponseHandler(&config)
 		}
 
 		if m, ok := configMap[hostname]; !ok || m == nil {
@@ -364,7 +369,8 @@ func (f *Gophorward) Serve() error {
 
 		configMap[hostname][uriPrefix] = &RequestConfig{
 			RouteConfig:  &config,
-			ReverseProxy: proxy,
+			ReverseProxy: reverseProxy,
+			TunnelProxy:  tunnelProxy,
 		}
 
 		if config.Certificate != nil {
@@ -375,31 +381,32 @@ func (f *Gophorward) Serve() error {
 		}
 	}
 
-	newHandler := func() http.Handler {
+	newHandler := func(isHttps bool) http.Handler {
+		l := httpsl
+		protocolPrefix := "https://"
+
+		if !isHttps {
+			l = httpl
+			protocolPrefix = "http://"
+		}
+
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			l := httpsl
-			protocolPrefix := "https://"
-
-			isHttps := IsHttps(request)
-
-			if !isHttps {
-				l = httpl
-				//goland:noinspection HttpUrlsUsage
-				protocolPrefix = "http://"
-			}
-
 			hostname := Hostname(request.Host)
 
-			// http proxy tunnel; TODO to be continued
-			if request.Method == http.MethodConnect {
-				//// we can NOT do auth for http, therefore panic here
-				//if !isHttps {
-				l.Info().Printf("[%s] -> CONNECT -> 405.notallowed", request.RemoteAddr)
-				f.MakeResponse(writer, request, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed), Error405)
-				return
-				//}
-				//hostname = Hostname(request.TLS.ServerName)
+			isTunneling := request.Method == http.MethodConnect
+
+			// http CONNECT tunnel, aka http proxy
+			if isTunneling {
+				//	// we can NOT do auth for http, therefore panic here
+				if !isHttps {
+					l.Info().Printf("[%s] -> CONNECT -> 405.notallowed", request.RemoteAddr)
+					f.MakeResponse(writer, request, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed), Error405)
+					return
+				}
+				hostname = Hostname(request.TLS.ServerName)
 			}
+
+			writer.Header().Set("Server", f.ServerName)
 
 			if !isHttps && CanRedirect2Https(request) {
 				if hasCertificate, ok := hostnameHasCertificate[hostname]; ok && hasCertificate {
@@ -407,8 +414,6 @@ func (f *Gophorward) Serve() error {
 					return
 				}
 			}
-
-			writer.Header().Set("Server", f.ServerName)
 
 			uriConfigMap, ok := configMap[hostname]
 			if !ok {
@@ -432,19 +437,20 @@ func (f *Gophorward) Serve() error {
 				return
 			}
 
-			proxy := requestConfig.ReverseProxy
-			if proxy == nil {
-				l.Error().Printf("[%s] -> [%s%s] -> 500.proxy", request.RemoteAddr, request.Host, request.RequestURI)
-				f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
-				return
-			}
-
 			routeConfig := requestConfig.RouteConfig
-			if routeConfig == nil {
-				l.Error().Printf("[%s] -> [%s%s] -> 500.config", request.RemoteAddr, request.Host, request.RequestURI)
-				f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
-				return
-			}
+			//if routeConfig == nil {
+			//	l.Error().Printf("[%s] -> [%s%s] -> 500.config", request.RemoteAddr, request.Host, request.RequestURI)
+			//	f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
+			//	return
+			//}
+
+			reverseProxy := requestConfig.ReverseProxy
+			tunnelProxy := requestConfig.TunnelProxy
+			//if reverseProxy == nil || tunnelProxy == nil {
+			//	l.Error().Printf("[%s] -> [%s%s] -> 500.proxy", request.RemoteAddr, request.Host, request.RequestURI)
+			//	f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
+			//	return
+			//}
 
 			if routeConfig.AccessLimitPerMinute > 0 && !f.accessCounter.CanAccess(
 				routeConfig.GetClientIdentity(request),
@@ -500,7 +506,7 @@ func (f *Gophorward) Serve() error {
 				}
 			}
 
-			// not pass token to next server
+			// do NOT pass token to the next server
 			request.Header.Del(f.AuthorizationHeaderKey)
 			cookies := request.Cookies()
 			request.Header.Del("Cookie")
@@ -514,27 +520,6 @@ func (f *Gophorward) Serve() error {
 			if routeConfig.StripURIPrefix {
 				request.RequestURI = strings.TrimPrefix(request.RequestURI, string(routeConfig.URIPrefix))
 				request.URL.Path = request.RequestURI
-			}
-
-			consoleMessage := fmt.Sprintf(
-				"%s@%s %s %s%s%s -> %s%s",
-				userId,
-				request.RemoteAddr,
-				request.Method,
-				protocolPrefix, request.Host, originalURI,
-				routeConfig.forwardToString, request.RequestURI,
-			)
-			l.Info().Print(consoleMessage)
-
-			if f.BeforeForward != nil {
-				f.BeforeForward(
-					userId,
-					routeConfig.Name,
-					originalURI,
-					routeConfig.forwardToString,
-					consoleMessage,
-					request,
-				)
 			}
 
 			if routeConfig.DownHeaders != nil {
@@ -558,16 +543,63 @@ func (f *Gophorward) Serve() error {
 				request.Host = routeConfig.ForwardTo.Hostname()
 			}
 
-			if routeConfig.EnableCompression && strings.Contains(request.Header.Get("accept-encoding"), "gzip") {
-				writer = NewGzipHttpResponseWriter(writer)
+			var consoleMessage string
+
+			if isTunneling {
+				// 1@127.0.0.1:0000 CONNECT(proxy) https://proxy.testlan.allape.cc -> duckduckgo.com:443
+				consoleMessage = fmt.Sprintf(
+					"%s@%s %s(%s) %s%s -> %s",
+					userId,
+					request.RemoteAddr,
+					request.Method,
+					routeConfig.Name,
+					protocolPrefix, request.TLS.ServerName,
+					request.Host,
+				)
+			} else {
+				// 1@127.0.0.1:0000 GET(dufs) https://dufs.testlan.allape.cc/
+				consoleMessage = fmt.Sprintf(
+					"%s@%s %s(%s) %s%s%s",
+					userId,
+					request.RemoteAddr,
+					request.Method,
+					routeConfig.Name,
+					protocolPrefix, request.Host, originalURI,
+				)
 			}
 
-			proxy.ServeHTTP(writer, request)
+			l.Info().Print(consoleMessage)
 
-			if w, ok := writer.(*GzipHttpResponseWriter); ok {
-				err := w.Close()
+			if f.BeforeForward != nil {
+				err = f.BeforeForward(
+					userId,
+					routeConfig,
+					consoleMessage,
+					request,
+					originalURI,
+				)
 				if err != nil {
-					l.Error().Printf("failed to close gzip writer: %s", err)
+					l.Error().Printf("[%s] -> [%s%s] -> 500.blocked %v", request.RemoteAddr, request.Host, request.RequestURI, err)
+					f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
+					return
+				}
+			}
+
+			if isTunneling {
+				tunnelProxy.ServeHTTP(writer, request)
+			} else {
+				if routeConfig.EnableCompression &&
+					strings.Contains(request.Header.Get("accept-encoding"), "gzip") {
+					writer = NewGzipHttpResponseWriter(writer)
+				}
+
+				reverseProxy.ServeHTTP(writer, request)
+
+				if w, ok := writer.(*GzipHttpResponseWriter); ok {
+					err := w.Close()
+					if err != nil {
+						l.Error().Printf("failed to close gzip writer: %s", err)
+					}
 				}
 			}
 		})
@@ -583,7 +615,7 @@ func (f *Gophorward) Serve() error {
 
 		f.httpServer = &http.Server{
 			Addr:    f.HttpAddr,
-			Handler: newHandler(),
+			Handler: newHandler(false),
 		}
 
 		go func() {
@@ -606,7 +638,7 @@ func (f *Gophorward) Serve() error {
 
 		f.httpsServer = &http.Server{
 			Addr:    f.HttpsAddr,
-			Handler: newHandler(),
+			Handler: newHandler(true),
 			TLSConfig: &tls.Config{
 				Certificates: certificates,
 			},

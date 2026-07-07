@@ -209,7 +209,7 @@ func httpProxyConfig() (*RouteConfig, error) {
 		forward        /         .
 
 		# test
-		curl -v -x https://proxy.testlan.allape.cc https://duckduckgo.com
+		curl -v -x https://proxy.testlan.allape.cc --proxy-header "X-Goor-Authorization: 1234567890" https://duckduckgo.com
 	*/
 	u, err := url.Parse("http://127.0.0.1:1080")
 	if err != nil {
@@ -221,7 +221,7 @@ func httpProxyConfig() (*RouteConfig, error) {
 		Priority:             100,
 		Hostname:             "proxy.testlan.allape.cc",
 		URIPrefix:            "",
-		AllowPublicAccess:    true,
+		AllowPublicAccess:    false,
 		StripURIPrefix:       false,
 		AccessLimitPerMinute: 60,
 		SetHost:              false,
@@ -277,6 +277,9 @@ func TestNewGophorward(t *testing.T) {
 			Token: "1234567890",
 			AllowedRoutes: []RouteName{
 				"dufs",
+				"mqtt",
+				"docker-registry",
+				"proxy",
 			},
 			ExpireAt: time.Now().Add(time.Hour * 999_999),
 
