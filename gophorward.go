@@ -18,13 +18,16 @@ import (
 
 const ServerName = "Goor"
 
-var httpl = gogger.New("forwarder:http")
-var httpsl = gogger.New("forwarder:https")
+var l = gogger.New("forwarder")
+
+var hl = l.New("http")
+var hsl = l.New("https")
 
 const (
 	HeaderAuthorization = "X-Goor-Authorization"
 	HeaderUserID        = "X-Goor-User-ID"
 	HeaderUserName      = "X-Goor-User-Name"
+	HeaderRouteNonce    = "X-Goor-Route-Nonce"
 
 	CookieTokenKey = "x-goor-token"
 
@@ -382,11 +385,11 @@ func (f *Gophorward) Serve() error {
 	}
 
 	newHandler := func(isHttps bool) http.Handler {
-		l := httpsl
+		l := hsl
 		protocolPrefix := "https://"
 
 		if !isHttps {
-			l = httpl
+			l = hl
 			protocolPrefix = "http://"
 		}
 
@@ -397,7 +400,7 @@ func (f *Gophorward) Serve() error {
 
 			// http CONNECT tunnel, aka http proxy
 			if isTunneling {
-				//	// we can NOT do auth for http, therefore panic here
+				// we can NOT do auth for http, therefore panic here
 				if !isHttps {
 					l.Info().Printf("[%s] -> CONNECT -> 405.notallowed", request.RemoteAddr)
 					f.MakeResponse(writer, request, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed), Error405)
@@ -466,24 +469,14 @@ func (f *Gophorward) Serve() error {
 				request.Header.Del(HeaderUserID)
 				request.Header.Del(HeaderUserName)
 			} else {
-				token := request.Header.Get(f.AuthorizationHeaderKey)
-				if token == "" {
-					cookie, err := request.Cookie(f.AuthorizationCookieKey)
-					if err == nil {
-						token, _ = url.QueryUnescape(cookie.Value)
-					}
-				}
-
-				if token == "" {
+				token, err := GetValueThroughCookieHeaderQuery(request, f.AuthorizationHeaderKey)
+				if err != nil || token == "" {
 					f.endWith401(writer, request)
 					return
 				}
 
 				session, ok := f.GetToken(Token(token))
-				if !ok {
-					f.endWith401(writer, request)
-					return
-				} else if time.Now().After(session.ExpireAt) {
+				if !ok || time.Now().After(session.ExpireAt) {
 					f.endWith401(writer, request)
 					return
 				}
@@ -507,13 +500,11 @@ func (f *Gophorward) Serve() error {
 			}
 
 			// do NOT pass token to the next server
-			request.Header.Del(f.AuthorizationHeaderKey)
-			cookies := request.Cookies()
-			request.Header.Del("Cookie")
-			for _, cookie := range cookies {
-				if cookie.Name != f.AuthorizationCookieKey {
-					request.AddCookie(cookie)
-				}
+			err := DeleteThroughCookieHeaderQuery(request, f.AuthorizationHeaderKey)
+			if err != nil {
+				l.Error().Printf("[%s] -> [%s%s] -> 500.tokendeletion %v", request.RemoteAddr, request.Host, request.RequestURI, err)
+				f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
+				return
 			}
 
 			originalURI := request.RequestURI
@@ -522,6 +513,9 @@ func (f *Gophorward) Serve() error {
 				request.URL.Path = request.RequestURI
 			}
 
+			if routeConfig.Nonce != "" {
+				request.Header.Add(HeaderRouteNonce, routeConfig.Nonce)
+			}
 			if routeConfig.DownHeaders != nil {
 				for header, values := range routeConfig.DownHeaders {
 					for _, value := range values {
@@ -546,7 +540,7 @@ func (f *Gophorward) Serve() error {
 			var consoleMessage string
 
 			if isTunneling {
-				// 1@127.0.0.1:0000 CONNECT(proxy) https://proxy.testlan.allape.cc -> duckduckgo.com:443
+				// root@127.0.0.1:0000 CONNECT(proxy) https://proxy.testlan.allape.cc -> duckduckgo.com:443
 				consoleMessage = fmt.Sprintf(
 					"%s@%s %s(%s) %s%s -> %s",
 					userId,
@@ -557,7 +551,7 @@ func (f *Gophorward) Serve() error {
 					request.Host,
 				)
 			} else {
-				// 1@127.0.0.1:0000 GET(dufs) https://dufs.testlan.allape.cc/
+				// root@127.0.0.1:0000 GET(dufs) https://dufs.testlan.allape.cc/
 				consoleMessage = fmt.Sprintf(
 					"%s@%s %s(%s) %s%s%s",
 					userId,
@@ -623,11 +617,11 @@ func (f *Gophorward) Serve() error {
 				wait.Done()
 			}()
 
-			httpl.Info().Printf("http forwarder start on %s", f.HttpAddr)
+			hl.Info().Printf("http forwarder start on %s", f.HttpAddr)
 
 			err := f.httpServer.ListenAndServe()
 			if !errors.Is(err, http.ErrServerClosed) {
-				httpl.Error().Printf("http server error: %s", err)
+				hl.Error().Printf("http server error: %s", err)
 			}
 		}()
 	}
@@ -649,11 +643,11 @@ func (f *Gophorward) Serve() error {
 				wait.Done()
 			}()
 
-			httpsl.Info().Printf("https forwarder start on %s", f.HttpsAddr)
+			hsl.Info().Printf("https forwarder start on %s", f.HttpsAddr)
 
 			err := f.httpsServer.ListenAndServeTLS("", "")
 			if !errors.Is(err, http.ErrServerClosed) {
-				httpsl.Error().Printf("https server error: %s", err)
+				hsl.Error().Printf("https server error: %s", err)
 			}
 		}()
 	}

@@ -16,7 +16,24 @@ type SimpleUser struct {
 	Name UserName `json:"name"`
 }
 
-func GinMiddlewareHandler(noUserHandler ...gin.HandlerFunc) gin.HandlerFunc {
+func NewMustValidateRouteNonceHandler(routeNonce string, invalidRouteNonceHandler ...gin.HandlerFunc) gin.HandlerFunc {
+	routeNonce = strings.TrimSpace(routeNonce)
+	if routeNonce == "" {
+		panic("route nonce must NOT be empty")
+	}
+
+	return func(context *gin.Context) {
+		nonce, err := TrimHttpValue(context.Request.Header.Get(HeaderRouteNonce))
+		if err != nil || nonce != routeNonce {
+			for _, handlerFunc := range invalidRouteNonceHandler {
+				handlerFunc(context)
+			}
+			return
+		}
+	}
+}
+
+func NewMustHaveUserHandler(noUserHandler ...gin.HandlerFunc) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		user, ok := HttpGetUser(context.Request)
 

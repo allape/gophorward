@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -52,4 +53,70 @@ func CanRedirect2Https(request *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+func TrimHttpValue(value string) (string, error) {
+	if value == "" {
+		return value, nil
+	}
+
+	v, err := url.QueryUnescape(value)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(v), nil
+}
+
+// GetValueThroughCookieHeaderQuery
+// Get string value from cookies first,
+//
+//	then from header if empty,
+//	then from query/searchparams if empty again
+func GetValueThroughCookieHeaderQuery(request *http.Request, key string) (string, error) {
+	cookie, err := request.Cookie(key)
+	if err != nil {
+		return "", err
+	}
+
+	v, err := TrimHttpValue(cookie.Value)
+	if err != nil {
+		return "", err
+	} else if v != "" {
+		return v, nil
+	}
+
+	v, err = TrimHttpValue(request.Header.Get(key))
+	if err != nil {
+		return "", err
+	} else if v != "" {
+		return v, nil
+	}
+
+	v, err = TrimHttpValue(request.URL.Query().Get(key))
+	if err != nil {
+		return "", err
+	} else if v != "" {
+		return v, nil
+	}
+
+	return "", nil
+}
+
+func DeleteThroughCookieHeaderQuery(request *http.Request, key string) error {
+	request.Header.Del(key)
+
+	cookies := request.Cookies()
+	request.Header.Del("Cookie")
+	for _, cookie := range cookies {
+		if cookie.Name != key {
+			request.AddCookie(cookie)
+		}
+	}
+
+	query := request.URL.Query()
+	query.Del(key)
+	request.URL.RawQuery = query.Encode()
+
+	return nil
 }

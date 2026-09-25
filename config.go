@@ -17,6 +17,7 @@ type (
 
 type RouteConfig struct {
 	Name                 RouteName `json:"name"`                 // unique name
+	Nonce                string    `json:"nonce"`                // this value will be passed to downstream request in header if not empty for simple identify
 	Priority             uint64    `json:"priority"`             // bigger for higher priority
 	Hostname             Hostname  `json:"hostname"`             // hostname for capture, full text comparison, should not contain any slash(/)
 	URIPrefix            URIPrefix `json:"uriPrefix"`            // secondary match after hostname, only match prefix, use Priority to control the access order

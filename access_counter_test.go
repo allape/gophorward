@@ -9,7 +9,7 @@ import (
 func TestAccessCounter(t *testing.T) {
 	ac := NewAccessCounter(2 * time.Second)
 
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		ok := ac.CanAccess("abc", 60)
 
 		if !ok {
@@ -17,7 +17,7 @@ func TestAccessCounter(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		ok := ac.CanAccess("abc", 60)
 
 		if ok {
@@ -30,7 +30,7 @@ func TestAccessCounter(t *testing.T) {
 	time.Sleep(doubleTime)
 	log.Printf("%s later", doubleTime.String())
 
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		ok := ac.CanAccess("abc", 60)
 
 		if !ok {
@@ -38,7 +38,7 @@ func TestAccessCounter(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		ok := ac.CanAccess("abc", 60)
 
 		if ok {

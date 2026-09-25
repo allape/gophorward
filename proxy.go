@@ -60,16 +60,16 @@ func (h *HttpConnectTunnelProxy) ServeHTTP(writer http.ResponseWriter, request *
 			ServerName: h.serverURL.Hostname(),
 			RootCAs:    h.CaCertPool,
 		})
-		if err := tlsConn.Handshake(); err != nil {
-			shouldCloseNow = true
-			http.Error(writer, "proxy tls error", http.StatusInternalServerError)
-			return
-		}
 		defer func() {
 			if shouldCloseNow {
 				_ = tlsConn.Close()
 			}
 		}()
+		if err := tlsConn.Handshake(); err != nil {
+			shouldCloseNow = true
+			http.Error(writer, "proxy tls error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	var sb strings.Builder

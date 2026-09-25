@@ -60,7 +60,7 @@ func dufsConfig() (*RouteConfig, error) {
 
 		# test ops
 		# open url https://dufs.testlan.allape.cc/
-		# run below javascript in Console to apply token in Cookies
+		# run below JavaScript in Console to apply token in Cookies
 		document.cookie = "x-goor-token=1234567890; Max-Age=31536000; Domain=.testlan.allape.cc; Path=/"
 	*/
 	u, err := url.Parse("http://127.0.0.1:5050")
@@ -70,6 +70,7 @@ func dufsConfig() (*RouteConfig, error) {
 
 	r := &RouteConfig{
 		Name:                 "dufs",
+		Nonce:                "dufs-abab-1212-9090",
 		Priority:             100,
 		Hostname:             "dufs.testlan.allape.cc",
 		URIPrefix:            "",
@@ -283,7 +284,7 @@ func TestNewGophorward(t *testing.T) {
 			},
 			ExpireAt: time.Now().Add(time.Hour * 999_999),
 
-			UserID:   "1",
+			UserID:   "johndoe",
 			UserName: "John Doe",
 		},
 	})
