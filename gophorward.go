@@ -52,7 +52,7 @@ type RequestConfig struct {
 
 type (
 	AuthorizedTokenMap map[Token]AuthorizedToken
-	RequestConfigMap   map[Hostname]map[URIPrefix]*RequestConfig
+	RequestConfigMap   map[Hostname][]*RequestConfig
 )
 
 type Gophorward struct {
@@ -178,7 +178,7 @@ func (f *Gophorward) prepare() error {
 	}
 
 	slices.SortFunc(f.RouteConfigs, func(a, b RouteConfig) int {
-		return -cmp.Compare(a.Priority, b.Priority)
+		return cmp.Compare(b.Priority, a.Priority)
 	})
 
 	return nil
@@ -355,7 +355,6 @@ func (f *Gophorward) Serve() error {
 		config.forwardToString = config.ForwardTo.String()
 
 		hostname := config.Hostname
-		uriPrefix := config.URIPrefix
 
 		reverseProxy := httputil.NewSingleHostReverseProxy(config.ForwardTo)
 		tunnelProxy := NewHttpConnectTunnelProxy(config.ForwardTo)
@@ -373,17 +372,21 @@ func (f *Gophorward) Serve() error {
 		}
 
 		if m, ok := configMap[hostname]; !ok || m == nil {
-			configMap[hostname] = make(map[URIPrefix]*RequestConfig)
+			configMap[hostname] = []*RequestConfig{}
 		}
 
-		configMap[hostname][uriPrefix] = &RequestConfig{
+		configMap[hostname] = append(configMap[hostname], &RequestConfig{
 			RouteConfig:  &config,
 			ReverseProxy: reverseProxy,
 			TunnelProxy:  tunnelProxy,
-		}
+		})
 
 		if config.Certificate != nil {
-			certificates = append(certificates, *config.Certificate)
+			if !slices.ContainsFunc(certificates, func(cert tls.Certificate) bool {
+				return cert.Leaf.Subject.CommonName == config.Certificate.Leaf.Subject.CommonName
+			}) {
+				certificates = append(certificates, *config.Certificate)
+			}
 			hostnameHasCertificate[hostname] = true
 		} else {
 			hostnameHasCertificate[hostname] = false
@@ -433,8 +436,8 @@ func (f *Gophorward) Serve() error {
 
 			var requestConfig *RequestConfig
 
-			for prefix, rc := range uriConfigMap {
-				if strings.HasPrefix(request.RequestURI, string(prefix)) {
+			for _, rc := range uriConfigMap {
+				if strings.HasPrefix(request.RequestURI, string(rc.RouteConfig.URIPrefix)) {
 					requestConfig = rc
 					break
 				}
