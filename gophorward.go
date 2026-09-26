@@ -198,7 +198,17 @@ func (f *Gophorward) modifyResponseHandler(config *RouteConfig) func(r *http.Res
 				}
 				location = path.Join(seg...) + "/"
 			}
-			r.Header.Set("Location", path.Join(string(config.URIPrefix), strings.TrimPrefix(location, config.ForwardTo.Path)))
+
+			// path.Join will remove the slash if location ends with a slash
+			endWithSlash := strings.HasSuffix(location, "/")
+
+			location = path.Join(string(config.URIPrefix), strings.TrimPrefix(location, config.ForwardTo.Path))
+
+			if endWithSlash {
+				location += "/"
+			}
+
+			r.Header.Set("Location", location)
 		}
 		return nil
 	}
