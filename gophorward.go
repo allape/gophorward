@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -194,9 +195,9 @@ func (f *Gophorward) modifyResponseHandler(config *RouteConfig) func(r *http.Res
 				if len(seg) > 1 {
 					seg = seg[0 : len(seg)-1]
 				}
-				location = strings.Join(seg, "/") + "/"
+				location = path.Join(seg...) + "/"
 			}
-			r.Header.Set("Location", string(config.URIPrefix)+location)
+			r.Header.Set("Location", path.Join(string(config.URIPrefix), strings.TrimPrefix(location, config.ForwardTo.Path)))
 		}
 		return nil
 	}
