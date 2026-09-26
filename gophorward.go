@@ -1,6 +1,7 @@
 package gophorward
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -177,7 +178,7 @@ func (f *Gophorward) prepare() error {
 	}
 
 	slices.SortFunc(f.RouteConfigs, func(a, b RouteConfig) int {
-		return int(b.Priority - a.Priority)
+		return -cmp.Compare(a.Priority, b.Priority)
 	})
 
 	return nil
