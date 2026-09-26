@@ -60,7 +60,7 @@ func TrimHttpValue(value string) (string, error) {
 		return value, nil
 	}
 
-	v, err := url.QueryUnescape(value)
+	v, err := url.PathUnescape(value)
 	if err != nil {
 		return "", err
 	}
@@ -74,19 +74,17 @@ func TrimHttpValue(value string) (string, error) {
 //	then from header if empty,
 //	then from query/searchparams if empty again
 func GetValueThroughCookieHeaderQuery(request *http.Request, key string) (string, error) {
-	cookie, err := request.Cookie(key)
-	if err != nil {
-		return "", err
+	cookies := request.CookiesNamed(key)
+	if len(cookies) > 0 {
+		v, err := TrimHttpValue(cookies[0].Value)
+		if err != nil {
+			return "", err
+		} else if v != "" {
+			return v, nil
+		}
 	}
 
-	v, err := TrimHttpValue(cookie.Value)
-	if err != nil {
-		return "", err
-	} else if v != "" {
-		return v, nil
-	}
-
-	v, err = TrimHttpValue(request.Header.Get(key))
+	v, err := TrimHttpValue(request.Header.Get(key))
 	if err != nil {
 		return "", err
 	} else if v != "" {

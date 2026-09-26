@@ -61,7 +61,7 @@ func dufsConfig() (*RouteConfig, error) {
 		# test ops
 		# open url https://dufs.testlan.allape.cc/
 		# run below JavaScript in Console to apply token in Cookies
-		document.cookie = "x-goor-token=1234567890; Max-Age=31536000; Domain=.testlan.allape.cc; Path=/"
+		document.cookie = "X-Goor-Authorization=1234567890; Max-Age=31536000; Domain=.testlan.allape.cc; Path=/"
 	*/
 	u, err := url.Parse("http://127.0.0.1:5050")
 	if err != nil {

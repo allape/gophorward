@@ -24,12 +24,11 @@ var hl = l.New("http")
 var hsl = l.New("https")
 
 const (
-	HeaderAuthorization = "X-Goor-Authorization"
-	HeaderUserID        = "X-Goor-User-ID"
-	HeaderUserName      = "X-Goor-User-Name"
-	HeaderRouteNonce    = "X-Goor-Route-Nonce"
+	AuthorizationKey = "X-Goor-Authorization"
 
-	CookieTokenKey = "x-goor-token"
+	HeaderUserID     = "X-Goor-User-ID"
+	HeaderUserName   = "X-Goor-User-Name"
+	HeaderRouteNonce = "X-Goor-Route-Nonce"
 
 	QueryNextURLName = "xgoornext"
 )
@@ -73,8 +72,7 @@ type Gophorward struct {
 	tokenLocker      sync.Mutex
 	authorizedTokens AuthorizedTokenMap
 
-	AuthorizationHeaderKey string // default is HeaderAuthorization, do NOT edit it when serving, higher priority than below
-	AuthorizationCookieKey string // default is CookieTokenKey, do NOT edit it when serving
+	AuthorizationKey string // default is AuthorizationKey, do NOT edit it when serving, higher priority than below
 
 	RedirectURLFor401 *url.URL
 	// RedirectNextURLQueryName
@@ -161,12 +159,8 @@ func (f *Gophorward) endWith401(writer http.ResponseWriter, request *http.Reques
 }
 
 func (f *Gophorward) prepare() error {
-	if f.AuthorizationHeaderKey == "" {
-		f.AuthorizationHeaderKey = HeaderAuthorization
-	}
-
-	if f.AuthorizationCookieKey == "" {
-		f.AuthorizationCookieKey = CookieTokenKey
+	if f.AuthorizationKey == "" {
+		f.AuthorizationKey = AuthorizationKey
 	}
 
 	if f.RedirectNextURLQueryName == "" {
@@ -469,7 +463,7 @@ func (f *Gophorward) Serve() error {
 				request.Header.Del(HeaderUserID)
 				request.Header.Del(HeaderUserName)
 			} else {
-				token, err := GetValueThroughCookieHeaderQuery(request, f.AuthorizationHeaderKey)
+				token, err := GetValueThroughCookieHeaderQuery(request, f.AuthorizationKey)
 				if err != nil || token == "" {
 					f.endWith401(writer, request)
 					return
@@ -500,7 +494,7 @@ func (f *Gophorward) Serve() error {
 			}
 
 			// do NOT pass token to the next server
-			err := DeleteThroughCookieHeaderQuery(request, f.AuthorizationHeaderKey)
+			err := DeleteThroughCookieHeaderQuery(request, f.AuthorizationKey)
 			if err != nil {
 				l.Error().Printf("[%s] -> [%s%s] -> 500.tokendeletion %v", request.RemoteAddr, request.Host, request.RequestURI, err)
 				f.MakeResponse(writer, request, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError), Error500)
