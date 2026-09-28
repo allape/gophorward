@@ -94,7 +94,6 @@ type Gophorward struct {
 		routeConfig *RouteConfig,
 		consoleMessage string, // The message which logged to the std console
 		request *http.Request,
-		originalURI string, // URI before trim (if set to be trimmed)
 	) error
 }
 
@@ -516,10 +515,8 @@ func (f *Gophorward) Serve() error {
 				return
 			}
 
-			originalURI := request.RequestURI
 			if routeConfig.StripURIPrefix {
-				request.RequestURI = strings.TrimPrefix(request.RequestURI, string(routeConfig.URIPrefix))
-				request.URL.Path = request.RequestURI
+				request.URL.Path = strings.TrimPrefix(request.URL.Path, string(routeConfig.URIPrefix))
 			}
 
 			if routeConfig.Nonce != "" {
@@ -567,7 +564,7 @@ func (f *Gophorward) Serve() error {
 					request.RemoteAddr,
 					request.Method,
 					routeConfig.Name,
-					protocolPrefix, request.Host, originalURI,
+					protocolPrefix, request.Host, request.RequestURI,
 				)
 			}
 
@@ -579,7 +576,6 @@ func (f *Gophorward) Serve() error {
 					routeConfig,
 					consoleMessage,
 					request,
-					originalURI,
 				)
 				if err != nil {
 					l.Error().Printf("[%s] -> [%s%s] -> 500.blocked %v", request.RemoteAddr, request.Host, request.RequestURI, err)
