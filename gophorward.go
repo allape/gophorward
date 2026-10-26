@@ -262,8 +262,9 @@ func (f *Gophorward) RemoveSessionsByUserID(userID UserID) bool {
 }
 
 func (f *Gophorward) GetFistMatchedSession(tokens ...string) (*Session, bool) {
-	f.tokenLocker.Lock()
-	defer f.tokenLocker.Unlock()
+	//f.tokenLocker.Lock()
+	//defer f.tokenLocker.Unlock()
+
 	for _, token := range tokens {
 		if t, ok := f.sessionMap[Token(token)]; ok {
 			return &t, ok
@@ -273,15 +274,16 @@ func (f *Gophorward) GetFistMatchedSession(tokens ...string) (*Session, bool) {
 }
 
 func (f *Gophorward) GetSession(token Token) (Session, bool) {
-	f.tokenLocker.Lock()
-	defer f.tokenLocker.Unlock()
+	//f.tokenLocker.Lock()
+	//defer f.tokenLocker.Unlock()
+
 	t, ok := f.sessionMap[token]
 	return t, ok
 }
 
 func (f *Gophorward) GetSessions() ([]Session, error) {
-	f.tokenLocker.Lock()
-	defer f.tokenLocker.Unlock()
+	//f.tokenLocker.Lock()
+	//defer f.tokenLocker.Unlock()
 
 	tokens := make([]Session, len(f.sessionMap))
 	i := 0
