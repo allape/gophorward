@@ -1,0 +1,267 @@
+package gophorward
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
+	"testing"
+	"time"
+)
+
+// dufsConfig
+// Common test for http and https, there is no obviously error in this section
+func dufsConfig() (*RouteConfig, error) {
+	/*
+		sudo echo "127.0.0.1 dufs.testlan.allape.cc" >> /etc/hosts
+
+		dufs --port 5050 .
+
+		# test ops
+		# open url https://dufs.testlan.allape.cc/
+		# run below JavaScript in Console to apply token in Cookies
+		document.cookie = "X-Goor-Authorization=1234567890; Max-Age=31536000; Domain=.testlan.allape.cc; Path=/"
+	*/
+	u, err := url.Parse("http://127.0.0.1:5050")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse dufs addr: %s", err)
+	}
+
+	r := &RouteConfig{
+		Name:                 "dufs",
+		Nonce:                "dufs-abab-1212-9090",
+		Priority:             100,
+		Hostname:             "dufs.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    false,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    true,
+
+		ForwardTo: u,
+	}
+
+	cert, err := newTestCert()
+	if err != nil {
+		log.Printf("failed to load test certificate: %s", err)
+	} else {
+		r.Certificate = cert
+	}
+
+	return r, nil
+}
+
+// mqttConfig
+// http.Hijacker should be handled for WebSocket
+// See GzipHttpResponseWriter for detail
+func mqttConfig() (*RouteConfig, error) {
+	/*
+		sudo echo "127.0.0.1 mqtt.testlan.allape.cc" >> /etc/hosts
+
+		echo "listener 1883" > mosquitto.conf
+		echo "" >> mosquitto.conf
+		echo "allow_anonymous true" >> mosquitto.conf
+		echo "listener 1888" >> mosquitto.conf
+		echo "protocol websockets" >> mosquitto.conf
+		echo "allow_anonymous true" >> mosquitto.conf
+		echo "connection_messages true" >> mosquitto.conf
+		echo "" >> mosquitto.conf
+
+		docker run \
+		  -v "$(pwd)/mosquitto.conf":"/mosquitto/config/mosquitto.conf" \
+		  -d \
+		  -p 1888:1888 \
+		  --name mqtt \
+		  --restart=unless-stopped \
+		  eclipse-mosquitto
+
+		# test ops
+		# open url https://allape.github.io/React-Lyrics/?remoteTouchpadURL=mqtts%3A%2F%2Fmqtt.testlan.allape.cc#remote-touchpad
+		# click Connect to test
+	*/
+
+	u, err := url.Parse("http://127.0.0.1:1888")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse mqtt config: %s", err)
+	}
+
+	r := &RouteConfig{
+		Name:                 "mqtt",
+		Priority:             100,
+		Hostname:             "mqtt.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    true,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    true,
+
+		ForwardTo: u,
+	}
+
+	cert, err := newTestCert()
+	if err != nil {
+		log.Printf("failed to load test certificate: %s", err)
+	} else {
+		r.Certificate = cert
+	}
+
+	return r, nil
+}
+
+// dockerRegistryConfig
+// Should not redirect from http to https for some method, for example: PATCH
+// See CanRedirect2Https for detail
+func dockerRegistryConfig() (*RouteConfig, error) {
+	/*
+		sudo echo "127.0.0.1 docker-registry.testlan.allape.cc" >> /etc/hosts
+
+		docker run -d --name registry -p 5060:5000 --restart=unless-stopped registry:2
+
+		# test ops
+		docker pull alpine:3
+		docker tag alpine:3 docker-registry.testlan.allape.cc/alpine:3
+		docker push docker-registry.testlan.allape.cc/alpine:3
+	*/
+
+	u, err := url.Parse("http://127.0.0.1:5060")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse docker registry config: %s", err)
+	}
+
+	r := &RouteConfig{
+		Name:                 "docker-registry",
+		Priority:             100,
+		Hostname:             "docker-registry.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    true,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    true,
+
+		ForwardTo: u,
+	}
+
+	cert, err := newTestCert()
+	if err != nil {
+		log.Printf("failed to load test certificate: %s", err)
+	} else {
+		r.Certificate = cert
+	}
+
+	return r, nil
+}
+
+// httpProxyConfig
+// Test for http proxy tunnel
+func httpProxyConfig() (*RouteConfig, error) {
+	/*
+		# privoxy config
+		listen-address 127.0.0.1:1080
+		forward        /         .
+
+		# test
+		curl -v -x https://proxy.testlan.allape.cc --proxy-header "X-Goor-Authorization: 1234567890" https://duckduckgo.com
+	*/
+	u, err := url.Parse("http://127.0.0.1:1080")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse http proxy addr: %s", err)
+	}
+
+	r := &RouteConfig{
+		Name:                 "proxy",
+		Priority:             100,
+		Hostname:             "proxy.testlan.allape.cc",
+		URIPrefix:            "",
+		AllowPublicAccess:    false,
+		StripURIPrefix:       false,
+		AccessLimitPerMinute: 60,
+		SetHost:              false,
+		EnableCompression:    false,
+
+		ForwardTo: u,
+	}
+
+	cert, err := newTestCert()
+	if err != nil {
+		log.Printf("failed to load test certificate: %s", err)
+	} else {
+		r.Certificate = cert
+	}
+
+	return r, nil
+}
+
+//goland:noinspection GoUnusedFunction
+func testNewGophorward(t *testing.T) {
+	dufs, err := dufsConfig()
+	if err != nil {
+		t.Fatalf("failed to load dufs config: %s", err)
+		return
+	}
+
+	mqtt, err := mqttConfig()
+	if err != nil {
+		t.Fatalf("failed to load mqtt config: %s", err)
+		return
+	}
+
+	dockerRegistry, err := dockerRegistryConfig()
+	if err != nil {
+		t.Fatalf("failed to load docker registry config: %s", err)
+		return
+	}
+
+	httpProxy, err := httpProxyConfig()
+	if err != nil {
+		t.Fatalf("failed to load http proxy config: %s", err)
+		return
+	}
+
+	server, err := NewGophorward(":80", ":443", []RouteConfig{
+		*dufs,
+		*mqtt,
+		*dockerRegistry,
+		*httpProxy,
+	}, []Session{
+		{
+			Token: "1234567890",
+			AllowedRoutes: []RouteName{
+				"dufs",
+				"mqtt",
+				"docker-registry",
+				"proxy",
+			},
+			ExpireAt: time.Now().Add(time.Hour * 999_999),
+
+			UserID:   "johndoe",
+			UserName: "John Doe",
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create server: %s", err)
+		return
+	}
+
+	go func() {
+		err = server.Serve()
+		if err != nil {
+			log.Printf("failed to start server: %s", err)
+		}
+	}()
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	<-sigs
+
+	err = server.Shutdown(context.Background())
+	if err != nil {
+		t.Fatalf("failed to shutdown server: %s", err)
+		return
+	}
+}

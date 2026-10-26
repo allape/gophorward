@@ -23,7 +23,7 @@ func NewMustValidateRouteNonceHandler(routeNonce string, invalidRouteNonceHandle
 	}
 
 	return func(context *gin.Context) {
-		nonce, err := TrimHttpValue(context.Request.Header.Get(HeaderRouteNonce))
+		nonce, err := MustTrimHttpValue(context.Request.Header.Get(HeaderRouteNonce))
 		if err != nil || nonce != routeNonce {
 			for _, handlerFunc := range invalidRouteNonceHandler {
 				handlerFunc(context)

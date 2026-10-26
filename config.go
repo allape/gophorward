@@ -21,7 +21,7 @@ type RouteConfig struct {
 	Priority             uint64    `json:"priority"`             // bigger for higher priority
 	Hostname             Hostname  `json:"hostname"`             // hostname for capture, full text comparison, should not contain any slash(/)
 	URIPrefix            URIPrefix `json:"uriPrefix"`            // secondary match after hostname, only match prefix, use Priority to control the access order
-	AllowPublicAccess    bool      `json:"allowPublicAccess"`    // able to access without an AuthorizedToken
+	AllowPublicAccess    bool      `json:"allowPublicAccess"`    // able to access without a valid Session
 	StripURIPrefix       bool      `json:"stripURIPrefix"`       // remove URIPrefix from RequestURI before append it to ForwardTo
 	AccessLimitPerMinute uint64    `json:"accessLimitPerMinute"` // 0 to allow unlimited access
 	SetHost              bool      `json:"setHost"`              // set request.Host of http.HandlerFunc to the hostname of ForwardTo
@@ -56,7 +56,7 @@ type (
 	UserName string
 )
 
-type AuthorizedToken struct {
+type Session struct {
 	Token         Token       `json:"token"`
 	AllowedRoutes []RouteName `json:"allowedRoutes"` // RouteConfig.Name
 	AppendHeaders http.Header `json:"appendHeaders"` // not used for now

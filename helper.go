@@ -55,7 +55,7 @@ func CanRedirect2Https(request *http.Request) bool {
 	return false
 }
 
-func TrimHttpValue(value string) (string, error) {
+func MustTrimHttpValue(value string) (string, error) {
 	if value == "" {
 		return value, nil
 	}
@@ -68,37 +68,59 @@ func TrimHttpValue(value string) (string, error) {
 	return strings.TrimSpace(v), nil
 }
 
-// GetValueThroughCookieHeaderQuery
+func HttpValueMapFunc[T any](src []T, stringFn func(T) string) ([]string, error) {
+	if len(src) == 0 {
+		return nil, nil
+	}
+
+	values := make([]string, 0, len(src))
+
+	for _, s := range src {
+		v, err := MustTrimHttpValue(stringFn(s))
+		if err != nil {
+			return nil, err
+		} else if v == "" {
+			continue
+		}
+		values = append(values, v)
+	}
+
+	return values, nil
+}
+
+// GetValuesThroughCookieHeaderQuery
 // Get string value from cookies first,
 //
 //	then from header if empty,
 //	then from query/searchparams if empty again
-func GetValueThroughCookieHeaderQuery(request *http.Request, key string) (string, error) {
-	cookies := request.CookiesNamed(key)
-	if len(cookies) > 0 {
-		v, err := TrimHttpValue(cookies[0].Value)
-		if err != nil {
-			return "", err
-		} else if v != "" {
-			return v, nil
-		}
-	}
-
-	v, err := TrimHttpValue(request.Header.Get(key))
+func GetValuesThroughCookieHeaderQuery(request *http.Request, key string) ([]string, error) {
+	values, err := HttpValueMapFunc(request.CookiesNamed(key), func(cookie *http.Cookie) string {
+		return cookie.Value
+	})
 	if err != nil {
-		return "", err
-	} else if v != "" {
-		return v, nil
+		return nil, err
+	}
+	if len(values) > 0 {
+		return values, nil
 	}
 
-	v, err = TrimHttpValue(request.URL.Query().Get(key))
+	values, err = HttpValueMapFunc(request.Header.Values(key), func(value string) string { return value })
 	if err != nil {
-		return "", err
-	} else if v != "" {
-		return v, nil
+		return nil, err
+	}
+	if len(values) > 0 {
+		return values, nil
 	}
 
-	return "", nil
+	values, err = HttpValueMapFunc(request.URL.Query()[key], func(value string) string { return value })
+	if err != nil {
+		return nil, err
+	}
+	if len(values) > 0 {
+		return values, nil
+	}
+
+	return nil, nil
 }
 
 func DeleteThroughCookieHeaderQuery(request *http.Request, key string) error {

@@ -51,8 +51,8 @@ type RequestConfig struct {
 }
 
 type (
-	AuthorizedTokenMap map[Token]AuthorizedToken
-	RequestConfigMap   map[Hostname][]*RequestConfig
+	SessionMap       map[Token]Session
+	RequestConfigMap map[Hostname][]*RequestConfig
 )
 
 type Gophorward struct {
@@ -71,8 +71,8 @@ type Gophorward struct {
 
 	accessCounter *AccessCounter
 
-	tokenLocker      sync.Mutex
-	authorizedTokens AuthorizedTokenMap
+	tokenLocker sync.Mutex
+	sessionMap  SessionMap
 
 	AuthorizationKey string // default is AuthorizationKey, do NOT edit it when serving, higher priority than below
 
@@ -115,9 +115,9 @@ func (f *Gophorward) startCleaner(endChan <-chan struct{}) {
 				f.tokenLocker.Lock()
 				defer f.tokenLocker.Unlock()
 
-				for token, session := range f.authorizedTokens {
+				for token, session := range f.sessionMap {
 					if time.Now().After(session.ExpireAt) {
-						delete(f.authorizedTokens, token)
+						delete(f.sessionMap, token)
 					}
 				}
 			}()
@@ -213,69 +213,80 @@ func (f *Gophorward) modifyResponseHandler(config *RouteConfig) func(r *http.Res
 	}
 }
 
-// region AuthorizedToken
+// region Session
 
-func (f *Gophorward) AddToken(token AuthorizedToken) error {
-	if strings.TrimSpace(string(token.Token)) == "" {
-		return errors.New("token is empty")
-	} else if time.Now().After(token.ExpireAt) {
-		return errors.New("token is expired")
+func (f *Gophorward) AddSession(session Session) error {
+	if strings.TrimSpace(string(session.Token)) == "" {
+		return errors.New("session token is empty")
+	} else if time.Now().After(session.ExpireAt) {
+		return errors.New("session is expired")
 	}
 
 	f.tokenLocker.Lock()
 	defer f.tokenLocker.Unlock()
 
-	f.authorizedTokens[token.Token] = token
+	f.sessionMap[session.Token] = session
 
 	return nil
 }
 
-func (f *Gophorward) RemoveToken(token Token) bool {
+func (f *Gophorward) RemoveSession(token Token) bool {
 	f.tokenLocker.Lock()
 	defer f.tokenLocker.Unlock()
 
-	_, ok := f.authorizedTokens[token]
+	_, ok := f.sessionMap[token]
 	if !ok {
 		return false
 	}
-	delete(f.authorizedTokens, token)
+	delete(f.sessionMap, token)
 
 	return true
 }
 
-func (f *Gophorward) RemoveTokensByUserID(userID UserID) bool {
+func (f *Gophorward) RemoveSessionsByUserID(userID UserID) bool {
 	f.tokenLocker.Lock()
 	defer f.tokenLocker.Unlock()
 
 	tokenKeysForRemove := make([]Token, 0)
-	for token, authorizedToken := range f.authorizedTokens {
-		if authorizedToken.UserID == userID {
+	for token, session := range f.sessionMap {
+		if session.UserID == userID {
 			tokenKeysForRemove = append(tokenKeysForRemove, token)
 		}
 	}
 
 	for _, token := range tokenKeysForRemove {
-		delete(f.authorizedTokens, token)
+		delete(f.sessionMap, token)
 	}
 
 	return len(tokenKeysForRemove) == 0
 }
 
-func (f *Gophorward) GetToken(token Token) (AuthorizedToken, bool) {
+func (f *Gophorward) GetFistMatchedSession(tokens ...string) (*Session, bool) {
 	f.tokenLocker.Lock()
 	defer f.tokenLocker.Unlock()
-	t, ok := f.authorizedTokens[token]
+	for _, token := range tokens {
+		if t, ok := f.sessionMap[Token(token)]; ok {
+			return &t, ok
+		}
+	}
+	return nil, false
+}
+
+func (f *Gophorward) GetSession(token Token) (Session, bool) {
+	f.tokenLocker.Lock()
+	defer f.tokenLocker.Unlock()
+	t, ok := f.sessionMap[token]
 	return t, ok
 }
 
-func (f *Gophorward) GetTokens() ([]AuthorizedToken, error) {
+func (f *Gophorward) GetSessions() ([]Session, error) {
 	f.tokenLocker.Lock()
 	defer f.tokenLocker.Unlock()
 
-	tokens := make([]AuthorizedToken, len(f.authorizedTokens))
+	tokens := make([]Session, len(f.sessionMap))
 	i := 0
 
-	for _, token := range f.authorizedTokens {
+	for _, token := range f.sessionMap {
 		tokens[i] = token
 		i++
 	}
@@ -283,16 +294,16 @@ func (f *Gophorward) GetTokens() ([]AuthorizedToken, error) {
 	return tokens, nil
 }
 
-func (f *Gophorward) SetTokens(tokens []AuthorizedToken) {
+func (f *Gophorward) SetSessions(sessions []Session) {
 	f.tokenLocker.Lock()
 	defer f.tokenLocker.Unlock()
 
-	tokenMap := make(AuthorizedTokenMap, len(tokens))
-	for _, token := range tokens {
+	tokenMap := make(SessionMap, len(sessions))
+	for _, token := range sessions {
 		tokenMap[token.Token] = token
 	}
 
-	f.authorizedTokens = tokenMap
+	f.sessionMap = tokenMap
 }
 
 // endregion
@@ -477,13 +488,13 @@ func (f *Gophorward) Serve() error {
 				request.Header.Del(HeaderUserID)
 				request.Header.Del(HeaderUserName)
 			} else {
-				token, err := GetValueThroughCookieHeaderQuery(request, f.AuthorizationKey)
-				if err != nil || token == "" {
+				tokens, err := GetValuesThroughCookieHeaderQuery(request, f.AuthorizationKey)
+				if err != nil || len(tokens) == 0 {
 					f.endWith401(writer, request)
 					return
 				}
 
-				session, ok := f.GetToken(Token(token))
+				session, ok := f.GetFistMatchedSession(tokens...)
 				if !ok || time.Now().After(session.ExpireAt) {
 					f.endWith401(writer, request)
 					return
@@ -676,7 +687,7 @@ func (f *Gophorward) Serve() error {
 	return err
 }
 
-func NewGophorward(httpAddr, httpsAddr string, configs []RouteConfig, tokens []AuthorizedToken) (*Gophorward, error) {
+func NewGophorward(httpAddr, httpsAddr string, configs []RouteConfig, tokens []Session) (*Gophorward, error) {
 	httpAddr = strings.TrimSpace(httpAddr)
 	httpsAddr = strings.TrimSpace(httpsAddr)
 
@@ -695,7 +706,7 @@ func NewGophorward(httpAddr, httpsAddr string, configs []RouteConfig, tokens []A
 		accessCounter: NewAccessCounter(time.Minute),
 	}
 
-	f.SetTokens(tokens)
+	f.SetSessions(tokens)
 
 	return f, nil
 }
