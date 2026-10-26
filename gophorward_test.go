@@ -22,27 +22,26 @@ const (
 	LocalhostCertKey = "cert/localhost.key"
 )
 
+/*
+# Cert Tool: https://github.com/smallstep/cli
+
+mkdir -p cert && cd cert
+
+step certificate create --profile root-ca "Root CA" root_ca.crt root_ca.key \
+    --no-password --insecure
+
+step certificate create "Intermediate CA 1" \
+    intermediate_ca.crt intermediate_ca.key \
+    --profile intermediate-ca --ca ./root_ca.crt --ca-key ./root_ca.key \
+    --no-password --insecure
+
+step certificate create localhost localhost.crt localhost.key \
+    --profile leaf --not-after=8760h \
+    --no-password --insecure \
+    --ca ./intermediate_ca.crt --ca-key ./intermediate_ca.key --bundle
+*/
+
 // newTestCert
-//
-// Cert Tool: https://github.com/smallstep/cli
-//
-// mkdir -p LocalhostCertCrt && cd LocalhostCertCrt
-//
-// # with password 1
-// step certificate create --profile root-ca "Example Root CA" root_ca.crt root_ca.key
-//
-// # with password 2
-//
-//	step certificate create "Example Intermediate CA 1" \
-//	   intermediate_ca.crt intermediate_ca.key \
-//	   --profile intermediate-ca --ca ./root_ca.crt --ca-key ./root_ca.key
-//
-// # with password 3
-//
-//	step certificate create localhost localhost.crt localhost.key \
-//	   --profile leaf --not-after=8760h \
-//	   --no-password --insecure \
-//	   --ca ./intermediate_ca.crt --ca-key ./intermediate_ca.key --bundle
 func newTestCert() (*tls.Certificate, error) {
 	stat, err := os.Stat(LocalhostCertCrt)
 	if err != nil {
