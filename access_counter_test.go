@@ -1,7 +1,6 @@
 package gophorward
 
 import (
-	"log"
 	"testing"
 	"time"
 )
@@ -26,9 +25,9 @@ func TestAccessCounter(t *testing.T) {
 	}
 
 	doubleTime := ac.TimeUnit * 2
-	log.Printf("wait for %s to skip time window", doubleTime.String())
+	t.Logf("wait for %s to skip time window", doubleTime.String())
 	time.Sleep(doubleTime)
-	log.Printf("%s later", doubleTime.String())
+	t.Logf("%s later", doubleTime.String())
 
 	for range 60 {
 		ok := ac.CanAccess("abc", 60)

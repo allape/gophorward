@@ -46,7 +46,8 @@ func serveProxy(t *testing.T, proxy Servable) {
 	<-signalChan
 }
 
-func TestReverseProxy(t *testing.T) {
+//goland:noinspection GoUnusedFunction
+func testReverseProxy(t *testing.T) {
 	// dufs -p 5050 .
 	u, err := url.Parse("http://127.0.0.1:5050")
 	if err != nil {
@@ -57,7 +58,8 @@ func TestReverseProxy(t *testing.T) {
 	serveProxy(t, proxy)
 }
 
-func TestReverseProxyForHttpProxyTunnel(t *testing.T) {
+//goland:noinspection GoUnusedFunction
+func testReverseProxyForHttpProxyTunnel(t *testing.T) {
 	u, err := url.Parse("http://127.0.0.1:1080")
 	if err != nil {
 		t.Fatal(err)
